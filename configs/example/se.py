@@ -1,3 +1,4 @@
+
 # Copyright (c) 2012-2013 ARM Limited
 # All rights reserved.
 #
@@ -45,9 +46,10 @@ import sys
 import os
 
 import m5
+from m5.SimObject import SimObject
 from m5.defines import buildEnv
 from m5.objects import *
-from m5.params import NULL
+from m5.params import *
 from m5.util import addToPath, fatal, warn
 
 addToPath('../')
@@ -63,6 +65,8 @@ from common import MemConfig
 from common.FileSystemConfig import config_filesystem
 from common.Caches import *
 from common.cpu2000 import *
+from common.cores.riscv.boom import *
+
 
 def get_processes(args):
     """Interprets provided args and returns a list of processes"""
@@ -124,6 +128,26 @@ if '--ruby' in sys.argv:
     Ruby.define_options(parser)
 
 args = parser.parse_args()
+print(args.tagTableTagWidths)
+print(args.logTagTableSizes)
+
+class ourtage(TAGEBase):
+    nHistoryTables = args.nHistoryTables
+    minHist = 3
+    maxHist = 640
+    tagTableTagWidths =  args.tagTableTagWidths
+    logTagTableSizes = args.logTagTableSizes
+
+class boompb(TAGE):
+    tage = ourtage()
+
+class riscvboom(boom):
+    numIQEntries     =  args.instruction_queue_entries # Number of instruction queue entries
+    numROBEntries    =  args.reorder_buffer_entries # Number of reorder buffer entries
+    issueWidth = args.issue_width
+    dispatchWidth = args.issue_width
+    branchPred = boompb()
+
 
 multiprocesses = []
 numThreads = 1
@@ -164,7 +188,11 @@ if args.smt and args.num_cpus > 1:
 
 np = args.num_cpus
 mp0_path = multiprocesses[0].executable
-system = System(cpu = [CPUClass(cpu_id=i) for i in range(np)],
+# system = System(cpu = [CPUClass(cpu_id=i) for i in range(np)],
+#                 mem_mode = test_mem_mode,
+#                 mem_ranges = [AddrRange(args.mem_size)],
+#                 cache_line_size = args.cacheline_size)
+system = System(cpu = riscvboom(),
                 mem_mode = test_mem_mode,
                 mem_ranges = [AddrRange(args.mem_size)],
                 cache_line_size = args.cacheline_size)
@@ -189,8 +217,8 @@ system.cpu_clk_domain = SrcClockDomain(clock = args.cpu_clock,
 
 # If elastic tracing is enabled, then configure the cpu and attach the elastic
 # trace probe
-if args.elastic_trace_en:
-    CpuConfig.config_etrace(CPUClass, system.cpu, args)
+if args.elastic_trace_en:    CpuConfig.config_etrace(CPUClass, system.cpu, args)
+
 
 # All cpus belong to a common cpu_clk_domain, therefore running at a common
 # frequency.
